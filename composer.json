@@ -59,7 +59,8 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@php artisan test"
-        ]
+        ],
+        "build": "npm run production"
     },
     "extra": {
         "laravel": {
