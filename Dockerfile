@@ -67,6 +67,10 @@ php artisan migrate --force -v || {\n\
     echo "Continuing without migrations..."\n\
 }\n\
 \n\
+# Seed de la base de données\n\
+echo "Seeding database..."\n\
+php artisan db:seed\n\
+\n\
 # Cache des routes et vues\n\
 echo "Caching routes and views..."\n\
 php artisan route:cache\n\
