@@ -27,15 +27,5 @@ class AppServiceProvider extends ServiceProvider
         if (env('APP_ENV') === 'production') {
             URL::forceScheme('https');
         }
-
-        // Alternative : détecter automatiquement HTTPS
-        if (request()->header('x-forwarded-proto') === 'https') {
-            URL::forceScheme('https');
-        }
-
-        // Pour les proxies comme Render
-        if (env('FORCE_HTTPS', false)) {
-            URL::forceScheme('https');
-        }
     }
 }
