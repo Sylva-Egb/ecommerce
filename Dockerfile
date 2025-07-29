@@ -43,7 +43,6 @@ EXPOSE 80
 # 8. Nettoyage et préparation des caches (AJOUTEZ CES LIGNES)
 RUN php artisan config:clear && \
     php artisan cache:clear && \
-    rm -f database/database.sqlite && \
     sed -i "s/'default' => env('DB_CONNECTION', 'mysql'),/'default' => 'mysql',/" config/database.php && \
     sed -i "s/'connection' => env('DB_CACHE_CONNECTION'),/'connection' => 'mysql',/" config/cache.php
 
