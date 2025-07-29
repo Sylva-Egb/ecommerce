@@ -1,6 +1,6 @@
 FROM php:8.2-cli
 
-# Installation des dépendances système
+# 1. Installation des dépendances système (optimisée)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -13,71 +13,67 @@ RUN apt-get update && apt-get install -y \
     unzip \
     nodejs \
     npm \
-    && docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
-    && docker-php-ext-install pdo_pgsql pgsql pdo_mysql mbstring exif pcntl bcmath gd zip \
+    # Installation des extensions PHP nécessaires
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation de Composer
+# 2. Installation de Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copie du projet
+# 3. Configuration du projet
 WORKDIR /var/www/html
 COPY . .
 
-# Installation des dépendances PHP
-RUN composer install --optimize-autoloader --no-dev --no-interaction
+# 4. Installation des dépendances
+RUN composer install --optimize-autoloader --no-dev --no-interaction \
+    && npm install && npm run build
 
-# Installation des dépendances Node.js et build des assets
-RUN npm install && npm run build
+# 5. Configuration de l'environnement
+RUN if [ ! -f .env ]; then cp .env.example .env; fi \
+    && php artisan key:generate --no-interaction || true
 
-# Création du fichier .env si pas présent
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
-
-# Génération de la clé APP_KEY si pas définie
-RUN php artisan key:generate --no-interaction || true
-
-# Permissions Laravel
+# 6. Gestion des permissions
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage \
-    && chmod -R 775 /var/www/html/bootstrap/cache
+    && chmod -R 775 storage bootstrap/cache
 
-# Configuration pour le port dynamique de Render
+# 7. Exposition du port
 EXPOSE $PORT
 
-# Script de démarrage
+# 8. Script de démarrage amélioré
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-echo "Starting Laravel application..."\n\
+echo "=== Démarrage de l\'application ==="\n\
 \n\
-# Vérification de la connexion DB\n\
-echo "Testing database connection..."\n\
-php artisan migrate:status || echo "Cannot check migration status"\n\
+# Attente connexion DB (10 essais max)\n\
+echo "Vérification connexion MySQL..."\n\
+for i in {1..10}; do\n\
+    php artisan tinker --execute="\n\
+        try {\n\
+            DB::connection()->getPdo();\n\
+            echo \"✓ Connexion MySQL établie\";\n\
+            exit(0);\n\
+        } catch (\\Exception \$e) {\n\
+            echo \"✗ Tentative \$i/10: \" . \$e->getMessage();\n\
+            if [ \$i -eq 10 ]; then exit(1); fi;\n\
+            sleep 5;\n\
+        }"\n\
+    [ \$? -eq 0 ] && break\n\
+done\n\
 \n\
-# Cache des configurations\n\
-echo "Caching configurations..."\n\
-php artisan config:clear\n\
+# Migrations\n\
+echo "Exécution des migrations..."\n\
+php artisan migrate --force\n\
+\n\
+# Optimisation\n\
+echo "Optimisation des caches..."\n\
 php artisan config:cache\n\
-\n\
-# Migration de la base de données avec plus de détails\n\
-echo "Running migrations..."\n\
-php artisan migrate --force -v || {\n\
-    echo "Migration failed, checking what went wrong:"\n\
-    php artisan migrate:status\n\
-    echo "Continuing without migrations..."\n\
-}\n\
-\n\
-# Seed de la base de données\n\
-echo "Seeding database..."\n\
-php artisan db:seed\n\
-\n\
-# Cache des routes et vues\n\
-echo "Caching routes and views..."\n\
 php artisan route:cache\n\
 php artisan view:cache\n\
 \n\
-echo "Starting server on port $PORT"\n\
-# Démarrage du serveur sur le port de Render\n\
-php artisan serve --host=0.0.0.0 --port=$PORT' > /start.sh && chmod +x /start.sh
+# Démarrage\n\
+echo "Lancement sur le port \$PORT"\n\
+php artisan serve --host=0.0.0.0 --port=\$PORT\n\
+' > /start.sh && chmod +x /start.sh
 
 CMD ["/start.sh"]
