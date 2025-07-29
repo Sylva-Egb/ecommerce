@@ -37,9 +37,19 @@ RUN chown -R www-data:www-data /var/www/html \
 # 7. Exposition du port
 EXPOSE 80
 
-# 8. Script de démarrage - version ultra-simplifiée
+# 7. Exposition du port
+EXPOSE 80
+
+# 8. Nettoyage et préparation des caches (AJOUTEZ CES LIGNES)
+RUN php artisan config:clear && \
+    php artisan cache:clear && \
+    php artisan session:table && \
+    rm -f database/database.sqlite
+
+# 9. Script de démarrage - version corrigée
 RUN echo '#!/bin/sh\n\
 php artisan migrate --force\n\
+php artisan config:cache\n\
 php artisan serve --host=0.0.0.0 --port=80\n\
 ' > /start.sh && chmod +x /start.sh
 
