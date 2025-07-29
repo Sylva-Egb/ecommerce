@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Installation de Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.2 /usr/bin/composer /usr/bin/composer
 
 # 3. Configuration du projet
 WORKDIR /var/www/html
@@ -37,43 +37,43 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
 # 7. Exposition du port
-EXPOSE $PORT
+EXPOSE 80
 
 # 8. Script de démarrage amélioré
-RUN echo '#!/bin/bash\n\
+RUN echo "#!/bin/bash\n\
 set -e\n\
 \n\
-echo "=== Démarrage de l\'application ==="\n\
+echo \"=== Démarrage de l'application ===\"\n\
 \n\
 # Attente connexion DB (10 essais max)\n\
-echo "Vérification connexion MySQL..."\n\
+echo \"Vérification connexion MySQL...\"\n\
 for i in {1..10}; do\n\
-    php artisan tinker --execute="\n\
+    php artisan tinker --execute=\"\n\
         try {\n\
             DB::connection()->getPdo();\n\
-            echo \"✓ Connexion MySQL établie\";\n\
+            echo \" Connexion MySQL établie\";\n\
             exit(0);\n\
         } catch (\\Exception \$e) {\n\
-            echo \"✗ Tentative \$i/10: \" . \$e->getMessage();\n\
+            echo \" Tentative \$i/10: \" . \$e->getMessage();\n\
             if [ \$i -eq 10 ]; then exit(1); fi;\n\
             sleep 5;\n\
-        }"\n\
+        }\"\n\
     [ \$? -eq 0 ] && break\n\
 done\n\
 \n\
 # Migrations\n\
-echo "Exécution des migrations..."\n\
+echo \"Exécution des migrations...\"\n\
 php artisan migrate --force\n\
 \n\
 # Optimisation\n\
-echo "Optimisation des caches..."\n\
+echo \"Optimisation des caches...\"\n\
 php artisan config:cache\n\
 php artisan route:cache\n\
 php artisan view:cache\n\
 \n\
 # Démarrage\n\
-echo "Lancement sur le port \$PORT"\n\
-php artisan serve --host=0.0.0.0 --port=\$PORT\n\
-' > /start.sh && chmod +x /start.sh
+echo \"Lancement sur le port 80\"\n\
+php artisan serve --host=0.0.0.0 --port=80\n\
+" > /start.sh && chmod +x /start.sh
 
 CMD ["/start.sh"]
