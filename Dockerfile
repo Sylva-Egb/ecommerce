@@ -1,6 +1,6 @@
 FROM php:8.2-cli
 
-# 1. Installation des dépendances système
+# 1. Installation des dépendances système (SANS SQLite)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     libzip-dev \
+    libpq-dev \
     zip \
     unzip \
     nodejs \
     npm \
-    && docker-php-ext-install pdo pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd zip \
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Installation de Composer
@@ -36,26 +37,28 @@ RUN echo "=== Vérification des assets buildés ===" \
 RUN if [ ! -f .env ]; then cp .env.example .env; fi \
     && php artisan key:generate --no-interaction || true
 
-# 6. Créer la base de données SQLite
-RUN mkdir -p database && touch database/database.sqlite
-
-# 7. Gestion des permissions (AJOUT des permissions pour public/build)
+# 6. Gestion des permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage bootstrap/cache \
     && chmod -R 755 public \
     && chmod -R 755 public/build || echo "Dossier build inexistant"
 
-# 8. Nettoyage du cache npm
+# 7. Nettoyage du cache npm
 RUN npm cache clean --force
 
-# 9. Exposition du port
+# 8. Exposition du port
 EXPOSE 80
 
-# 10. Script de démarrage optimisé
+# 9. Script de démarrage sans migration automatique
 RUN echo '#!/bin/sh\n\
 echo "=== Démarrage de l'\''application ==="\n\
 echo "Vérification des assets:"\n\
 ls -la public/build/assets/ || echo "Assets non trouvés !"\n\
+echo "Attente de la base de données..."\n\
+until php artisan migrate:status 2>/dev/null; do\n\
+  echo "Base de données non accessible, attente..."\n\
+  sleep 2\n\
+done\n\
 echo "Migration de la base de données..."\n\
 php artisan migrate --force\n\
 echo "Nettoyage des caches..."\n\
