@@ -30,24 +30,22 @@ RUN composer install --optimize-autoloader --no-dev --no-interaction \
 RUN if [ ! -f .env ]; then cp .env.example .env; fi \
     && php artisan key:generate --no-interaction || true
 
-# 6. Gestion des permissions
+# 6. Créer la base de données SQLite
+RUN mkdir -p database && touch database/database.sqlite
+
+# 7. Gestion des permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
-# 7. Exposition du port
+# 8. Exposition du port
 EXPOSE 80
 
-# 7. Exposition du port
-EXPOSE 80
-
-# 8. Nettoyage et préparation des caches (AJOUTEZ CES LIGNES)
-RUN php artisan config:clear && \
-    php artisan cache:clear && \
-    php artisan route:clear
-
-# 9. Script de démarrage - version corrigée
+# 9. Script de démarrage optimisé
 RUN echo '#!/bin/sh\n\
 php artisan migrate --force\n\
+php artisan config:clear\n\
+php artisan cache:clear\n\
+php artisan route:clear\n\
 php artisan config:cache\n\
 php artisan serve --host=0.0.0.0 --port=80\n\
 ' > /start.sh && chmod +x /start.sh
