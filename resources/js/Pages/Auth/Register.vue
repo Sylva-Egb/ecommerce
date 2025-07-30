@@ -18,6 +18,13 @@ const form = useForm({
 const showPassword = ref(false);
 const showConfirmPassword = ref(false);
 const isHovering = ref(false);
+
+// AJOUT DE LA MÉTHODE SUBMIT (comme dans Login)
+const submit = () => {
+    form.post(route('register'), {
+        onFinish: () => form.reset('password', 'password_confirmation'),
+    });
+};
 </script>
 
 <template>
@@ -34,7 +41,7 @@ const isHovering = ref(false);
                 >
                     <div class="bg-white rounded-2xl shadow-xl overflow-hidden p-8 space-y-6 backdrop-blur-sm bg-opacity-90 border border-white/20">
                         <div class="text-center">
-                            <h1 class="text-3xl font-bold text-gray-900 bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text">
+                            <h1 class="text-3xl font-bold text-gray-900 bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
                                 Create Account
                             </h1>
                             <p class="mt-2 text-gray-500">Join our community today</p>
