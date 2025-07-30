@@ -19,4 +19,16 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['vue', '@inertiajs/vue3'],
+                }
+            }
+        },
+        outDir: 'public/build',
+        emptyOutDir: true,
+    },
+    base: '/build/',
 });

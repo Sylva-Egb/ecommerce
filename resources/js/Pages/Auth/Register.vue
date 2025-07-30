@@ -5,7 +5,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-vue-next';
 
 const form = useForm({
@@ -25,6 +25,13 @@ const submit = () => {
         onFinish: () => form.reset('password', 'password_confirmation'),
     });
 };
+
+onMounted(() => {
+    nextTick(() => {
+        const nameInput = document.getElementById('name');
+        if (nameInput) nameInput.focus();
+    });
+});
 </script>
 
 <template>
@@ -62,7 +69,6 @@ const submit = () => {
                                         v-model="form.name"
                                         required
                                         autofocus
-                                        autocomplete="name"
                                         placeholder="John Doe"
                                     />
                                 </div>
