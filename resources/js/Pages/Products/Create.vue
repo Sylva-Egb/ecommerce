@@ -109,7 +109,7 @@ function submit() {
           <!-- Bouton toggle -->
           <button
             type="button"
-            @click="isVedette = !isVedette"
+            @click="form.is_vedette = !form.is_vedette"
             :class="isVedette ? 'bg-pink-600' : 'bg-gray-200'"
             class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2"
           >
