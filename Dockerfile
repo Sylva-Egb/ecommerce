@@ -35,6 +35,8 @@ RUN npm ci --omit=dev && \
 RUN if [ ! -f .env ]; then cp .env.example .env; fi && \
     php artisan key:generate --no-interaction || true
 
+RUN php artisan storage:link
+
 # 7. Gestion des permissions
 RUN chown -R www-data:www-data /var/www/html && \
     chmod -R 775 storage bootstrap/cache
