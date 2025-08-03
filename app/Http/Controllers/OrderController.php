@@ -265,7 +265,10 @@ class OrderController extends Controller
             }
 
             // Envoi à l'admin
-            Mail::to(env('MAIL_ADMIN_ADDRESS'))->send(new OrderStatusUpdated($order, true));
+            $adminEmail = config('mail.admin.address');
+            if (!empty($adminEmail)) {
+                Mail::to($adminEmail)->send(new OrderStatusUpdated($order, true));
+            }
         }
 
         return redirect()->back()->with('success', 'Statut mis à jour');
