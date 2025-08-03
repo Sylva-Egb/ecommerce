@@ -52,7 +52,7 @@ class OrderConfirmation extends Mailable
     {
         return new Envelope(
             subject: 'Confirmation de commande #' . $this->order->order_number,
-            from: new Address('test@gmail.com', 'Test'),
+            from: new Address('romaricegbewole@gmail.com', 'Test'),
         );
     }
 

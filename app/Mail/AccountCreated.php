@@ -35,7 +35,7 @@ class AccountCreated extends Mailable
     {
         return new Envelope(
             subject: 'Account Created',
-            from: new Address('test@gmail.com', 'Test'),
+            from: new Address('romaricegbewole@gmail.com', 'Test'),
         );
     }
 

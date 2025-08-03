@@ -37,7 +37,7 @@ class OrderStatusUpdated extends Mailable
             subject: $this->isAdminCopy
             ? "Commande #{$this->order->order_number} mise à jour (Copie Admin)"
             : "Votre commande #{$this->order->order_number} a été mise à jour",
-            from: new Address('test@gmail.com', 'Test'),
+            from: new Address('romaricegbewole@gmail.com', 'Test'),
         );
     }
 
