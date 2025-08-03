@@ -11,6 +11,7 @@ import { User, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-vue-next';
 const form = useForm({
     name: '',
     email: '',
+    phone: '',
     password: '',
     password_confirmation: '',
 });
@@ -93,6 +94,26 @@ onMounted(() => {
                                     />
                                 </div>
                                 <InputError class="mt-1 text-sm" :message="form.errors.email" />
+                            </div>
+
+                            <!-- Phone Field -->
+                            <div>
+                                <InputLabel for="phone" value="Phone" class="text-gray-700" />
+                                <div class="relative mt-1">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Mail class="h-5 w-5 text-gray-400" />
+                                    </div>
+                                    <TextInput
+                                        id="phone"
+                                        type="phone"
+                                        class="block w-full pl-10 pr-3 py-3 rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 transition duration-200"
+                                        v-model="form.phone"
+                                        required
+                                        autocomplete="phone"
+                                        placeholder="your@email.com"
+                                    />
+                                </div>
+                                <InputError class="mt-1 text-sm" :message="form.errors.phone" />
                             </div>
 
                             <!-- Password Field -->
