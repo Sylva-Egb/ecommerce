@@ -1,12 +1,18 @@
 <script setup>
 import GuestLayout from '@/Layouts/GuestLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3'
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3'
 import { Star, ChevronRight, ShoppingCart, Zap, Heart, Share2, X, CheckCircle } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useCartStore } from '@/Stores/cartStore'
+/* importer router */
+import { router } from '@inertiajs/vue3'
 
 const cartStore = useCartStore()
+const page = usePage()
 
+// Déterminer le layout à utiliser
+const Layout = computed(() => page.props.auth.user ? AuthenticatedLayout : GuestLayout)
 
 const props = defineProps({
     product: Object,
@@ -20,25 +26,26 @@ const showSuccessModal = ref(false)
 const orderData = ref(null)
 const createAccount = ref(false)
 const password = ref('')
-const isSelfReceiving = ref(true) // Par défaut, c'est le client qui reçoit
+const isSelfReceiving = ref(true)
 
+// Préremplir les infos si l'utilisateur est connecté
 const form = useForm({
     product_id: null,
     quantity: 1,
     create_account: false,
     password: '',
     guest: {
-        name: '',
-        email: '',
-        phone: ''
+        name: page.props.auth.user?.name || '',
+        email: page.props.auth.user?.email || '',
+        phone: page.props.auth.user?.phone || ''
     },
     address: {
-        full_name: '',
-        address_line: '',
-        city: '',
-        zip_code: '',
-        country: 'Côte d\'Ivoire',
-        phone: ''
+        full_name: page.props.auth.user?.name || '',
+        address_line: page.props.auth.user?.address?.address_line || '',
+        city: page.props.auth.user?.address?.city || '',
+        zip_code: page.props.auth.user?.address?.zip_code || '',
+        country: page.props.auth.user?.address?.country || 'Côte d\'Ivoire',
+        phone: page.props.auth.user?.phone || ''
     }
 })
 
@@ -54,37 +61,63 @@ const addToCart = () => {
         quantity: quantity.value
     })
 }
+
 function openOrderModal() {
     form.product_id = props.product.id
     form.quantity = quantity.value
+
+    // Si l'utilisateur est connecté, préremplir avec ses infos
+    if (page.props.auth.user) {
+        form.guest.name = page.props.auth.user.name
+        form.guest.email = page.props.auth.user.email
+        form.guest.phone = page.props.auth.user.phone
+
+        if (page.props.auth.user.address) {
+            form.address = {
+                full_name: page.props.auth.user.name,
+                address_line: page.props.auth.user.address.address_line,
+                city: page.props.auth.user.address.city,
+                zip_code: page.props.auth.user.address.zip_code,
+                country: page.props.auth.user.address.country,
+                phone: page.props.auth.user.phone
+            }
+        }
+    }
+
     showOrderModal.value = true
 }
 
 function submitOrder() {
-    form.product_id = props.product.id
-    form.quantity = quantity.value
+    const items = cartStore.items.length > 0
+        ? cartStore.items.map(item => ({
+            product_id: item.id,
+            quantity: item.quantity
+        }))
+        : [{
+            product_id: props.product.id,
+            quantity: quantity.value
+        }];
 
     const formData = {
-        ...form.data(),
+        items,
         create_account: createAccount.value,
         password: createAccount.value ? password.value : undefined,
-        is_self_receiving: isSelfReceiving.value
+        is_self_receiving: isSelfReceiving.value,
+        address: isSelfReceiving.value ? null : {
+            full_name: form.address.full_name,
+            address_line: form.address.address_line,
+            city: form.address.city,
+            zip_code: form.address.zip_code,
+            country: form.address.country,
+            phone: form.address.phone
+        }
     };
-
-    // Si c'est le client qui reçoit, on remplit automatiquement l'adresse
-    if (isSelfReceiving.value) {
-        formData.address = {
-            full_name: formData.guest.name,
-            address_line: formData.guest.name, // Utiliser le nom comme adresse par défaut
-            city: "Non spécifié", // Valeur par défaut
-            zip_code: '',
-            country: 'Côte d\'Ivoire', // Valeur par défaut
-            phone: formData.guest.phone
-        };
-    }
 
     form.transform(() => formData).post(route('orders.store'), {
         preserveScroll: true,
+        onSuccess: () => {
+            showOrderModal.value = false
+        },
         onError: (errors) => {
             console.log('Erreurs de validation:', errors);
         }
@@ -92,16 +125,11 @@ function submitOrder() {
 }
 
 function shareProduct() {
-    // Créer l'URL du produit
     const productUrl = window.location.href
 
-    // Copier dans le presse-papier
     navigator.clipboard.writeText(productUrl)
         .then(() => {
-            // Afficher la notification
             showCopiedNotification.value = true
-
-            // Cacher la notification après 3 secondes
             if (notificationTimeout.value) {
                 clearTimeout(notificationTimeout.value)
             }
@@ -111,7 +139,6 @@ function shareProduct() {
         })
         .catch(err => {
             console.error('Erreur lors de la copie:', err)
-            // Fallback si clipboard API n'est pas supportée
             const textArea = document.createElement('textarea')
             textArea.value = productUrl
             document.body.appendChild(textArea)
@@ -128,9 +155,9 @@ function shareProduct() {
 </script>
 
 <template>
-    <GuestLayout>
-
+    <Layout>
         <Head :title="product.name" />
+
         <!-- Notification de copie -->
         <transition name="fade">
             <div v-if="showCopiedNotification"
@@ -249,7 +276,6 @@ function shareProduct() {
                         </button>
                     </div>
 
-
                     <!-- Share & Info -->
                     <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
                         <div class="flex items-center justify-between">
@@ -287,7 +313,8 @@ function shareProduct() {
                 </div>
             </div>
         </section>
-        <!-- Modal de commande amélioré -->
+
+        <!-- Modal de commande -->
         <transition name="modal">
             <div v-if="showOrderModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div @click.self="showOrderModal = false"
@@ -325,11 +352,10 @@ function shareProduct() {
 
                         <!-- Formulaire client -->
                         <div class="space-y-6">
-                            <!-- Vos champs de formulaire existants... -->
                             <div>
-                                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Informations client
+                                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                                    {{ page.props.auth.user ? 'Vos informations' : 'Informations client' }}
                                 </h3>
-
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
@@ -337,20 +363,23 @@ function shareProduct() {
                                             class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom
                                             complet *</label>
                                         <input v-model="form.guest.name" type="text" required
-                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white" />
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white"
+                                            :disabled="!!page.props.auth.user" />
                                     </div>
                                     <div>
                                         <label
                                             class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                                         <input v-model="form.guest.email" type="email"
-                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white" />
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white"
+                                            :disabled="!!page.props.auth.user" />
                                     </div>
                                     <div>
                                         <label
                                             class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Téléphone
                                             *</label>
                                         <input v-model="form.guest.phone" type="tel" required
-                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white" />
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-pink-500 focus:border-pink-500 dark:bg-gray-700 dark:text-white"
+                                            :disabled="!!page.props.auth.user" />
                                     </div>
                                 </div>
                             </div>
@@ -420,8 +449,8 @@ function shareProduct() {
                             </div>
                         </div>
 
-                        <!-- Nouvelle section pour la création de compte -->
-                        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+                        <!-- Création de compte (seulement pour les invités) -->
+                        <div v-if="!page.props.auth.user" class="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
                             <label class="flex items-center cursor-pointer">
                                 <input type="checkbox" v-model="createAccount"
                                     class="rounded text-pink-600 focus:ring-pink-500">
@@ -443,6 +472,7 @@ function shareProduct() {
                                 </div>
                             </div>
                         </div>
+
                         <!-- Pied de page -->
                         <div
                             class="sticky bottom-0 bg-white dark:bg-gray-800 px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
@@ -458,7 +488,6 @@ function shareProduct() {
                         </div>
                     </div>
                 </div>
-
             </div>
         </transition>
 
@@ -500,17 +529,16 @@ function shareProduct() {
                                 </svg>
                                 Télécharger la facture
                             </a>
-                            <button @click="showSuccessModal = false"
+                            <Link :href="page.props.auth.user ? route('orders.index') : route('home')"
                                 class="block w-full px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition">
-                                Fermer
-                            </button>
+                                {{ page.props.auth.user ? 'Voir mes commandes' : 'Retour à l\'accueil' }}
+                            </Link>
                         </div>
                     </div>
                 </div>
             </div>
         </transition>
-
-    </GuestLayout>
+    </Layout>
 </template>
 
 <style>

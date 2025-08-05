@@ -25,104 +25,50 @@ class OrderController extends Controller
     //
     public function store(Request $request)
     {
+        $user = $request->user();
+
         $validated = $request->validate([
-            'items' => 'sometimes|array',
-            'items.*.product_id' => 'required_with:items|exists:products,id',
-            'items.*.quantity' => 'required_with:items|integer|min:1',
-
-            'product_id' => 'required_without:items|exists:products,id',
-            'quantity' => 'required_without:items|integer|min:1',
-
-            'create_account' => 'boolean',
-            'password' => 'required_if:create_account,true|min:8|nullable',
+            'items' => 'required|array',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
             'is_self_receiving' => 'required|boolean',
 
-            'guest.name' => 'required|string|max:255',
-            'guest.email' => 'nullable|email|max:255',
-            'guest.phone' => 'required|string|max:255',
-
-            'address.full_name' => [
+            // Validation conditionnelle pour l'adresse
+            'address' => [
                 'required_if:is_self_receiving,false',
-                'string',
-                'max:255',
-                'nullable'
+                'array'
             ],
-            'address.address_line' => [
-                'required_if:is_self_receiving,false',
-                'string',
-                'max:255',
-                'nullable'
-            ],
-            'address.city' => [
-                'required_if:is_self_receiving,false',
-                'string',
-                'max:255',
-                'nullable'
-            ],
+            'address.full_name' => 'required_if:is_self_receiving,false|string|max:255',
+            'address.address_line' => 'required_if:is_self_receiving,false|string|max:255',
+            'address.city' => 'required_if:is_self_receiving,false|string|max:255',
             'address.zip_code' => 'nullable|string|max:255',
-            'address.country' => [
-                'required_if:is_self_receiving,false',
-                'string',
-                'max:255',
-                'nullable'
-            ],
-            'address.phone' => [
-                'required_if:is_self_receiving,false',
-                'string',
-                'max:255',
-                'nullable'
-            ],
+            'address.country' => 'required_if:is_self_receiving,false|string|max:255',
+            'address.phone' => 'required_if:is_self_receiving,false|string|max:255'
         ]);
 
-        return DB::transaction(function () use ($validated) {
-            $user = null;
-            $accountCreated = false;
-            $temporaryPassword = null;
 
-            // Créer un compte utilisateur si demandé
-            if ($validated['create_account'] && $validated['guest']['email']) {
-                $temporaryPassword = $validated['password'] ?? Str::random(10);
-
-                $user = User::create([
-                    'name' => $validated['guest']['name'],
-                    'email' => $validated['guest']['email'],
-                    'password' => Hash::make($temporaryPassword),
-                    'phone' => $validated['guest']['phone'],
-                ]);
-
-                $accountCreated = true;
-            }
-
-            // Créer le guest
-            $guest = Guest::create([
-                'name' => $validated['guest']['name'],
-                'email' => $validated['guest']['email'],
-                'phone' => $validated['guest']['phone'],
-                'user_id' => $user ? $user->id : null,
-            ]);
-
+        return DB::transaction(function () use ($validated, $user) {
             // Créer l'adresse
             $addressData = [
-                'user_id' => $user ? $user->id : null,
-                'guest_id' => $user ? null : $guest->id,
-                'country' => $validated['address']['country'] ?? 'Côte d\'Ivoire',
+                'user_id' => $user->id,
+                'country' => $validated['is_self_receiving'] ? 'Côte d\'Ivoire' : $validated['address']['country']
             ];
 
             if ($validated['is_self_receiving']) {
                 $addressData = array_merge($addressData, [
-                    'full_name' => $validated['guest']['name'],
-                    'address_line' => $validated['address']['address_line'] ?? '',
-                    'city' => $validated['address']['city'] ?? '',
-                    'zip_code' => $validated['address']['zip_code'] ?? '',
-                    'phone' => $validated['guest']['phone'],
+                    'full_name' => $user->name,
+                    'address_line' => $user->address?->address_line ?? '',
+                    'city' => $user->address?->city ?? '',
+                    'zip_code' => $user->address?->zip_code ?? '',
+                    'phone' => $user->phone
                 ]);
             } else {
                 $addressData = array_merge($addressData, [
                     'full_name' => $validated['address']['full_name'],
                     'address_line' => $validated['address']['address_line'],
                     'city' => $validated['address']['city'],
-                    'zip_code' => $validated['address']['zip_code'],
-                    'phone' => $validated['address']['phone'],
+                    'zip_code' => $validated['address']['zip_code'] ?? null,
+                    'phone' => $validated['address']['phone']
                 ]);
             }
 
@@ -133,8 +79,7 @@ class OrderController extends Controller
 
             // Créer la commande
             $order = Order::create([
-                'user_id' => $user ? $user->id : null,
-                'guest_id' => $user ? null : $guest->id,
+                'user_id' => $user->id,
                 'address_id' => $address->id,
                 'order_number' => $orderNumber,
                 'total_price' => 0, // Calculé plus bas
@@ -143,31 +88,26 @@ class OrderController extends Controller
 
             $totalPrice = 0;
             $orderItems = [];
+            $products = [];
 
-            // Gestion des items (nouveau format avec tableau)
-            if (isset($validated['items'])) {
-                foreach ($validated['items'] as $item) {
-                    $product = Product::findOrFail($item['product_id']);
-                    $totalPrice += $product->price * $item['quantity'];
 
-                    $orderItems[] = [
-                        'order_id' => $order->id,
-                        'product_id' => $product->id,
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $product->price,
-                    ];
-                }
-            }
-            // Rétro-compatibilité avec ancien format mono-produit
-            else {
-                $product = Product::findOrFail($validated['product_id']);
-                $totalPrice = $product->price * $validated['quantity'];
+            foreach ($validated['items'] as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $totalPrice += $product->price * $item['quantity'];
 
                 $orderItems[] = [
                     'order_id' => $order->id,
                     'product_id' => $product->id,
-                    'quantity' => $validated['quantity'],
+                    'quantity' => $item['quantity'],
                     'unit_price' => $product->price,
+                ];
+
+                $products[] = [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'quantity' => $item['quantity'],
+                    'image_url' => $product->image_url,
                 ];
             }
 
@@ -177,41 +117,21 @@ class OrderController extends Controller
             // Créer tous les items en une seule requête
             OrderItem::insert($orderItems);
 
-            // Envoyer les emails
-            if ($validated['guest']['email']) {
-                // Reload la commande avec les relations
-                $order->load(['items.product', 'address']);
-
-                Mail::to($validated['guest']['email'])->send(new OrderConfirmation($order));
-
-                if ($user) {
-                    Mail::to($user->email)->send(new OrderConfirmation($order));
-                }
-
-                if ($accountCreated) {
-                    Mail::to($validated['guest']['email'])->send(new AccountCreated($user, $temporaryPassword));
-                }
-            }
+            // Envoyer l'email de confirmation
+            $order->load(['items.product', 'address']);
+            Mail::to($user->email)->send(new OrderConfirmation($order));
 
             return Inertia::render('Order/Success', [
                 'order' => [
                     'order_number' => $orderNumber,
+                    'total_price' => $totalPrice,
                     'invoice_url' => route('order.invoice', $order->id),
-                    'account_created' => $accountCreated
                 ],
-                'products' => $order->items->map(function ($item) {
-                    return [
-                        'id' => $item->product_id,
-                        'name' => $item->product->name,
-                        'image_url' => $item->product->image_url,
-                        'price' => $item->unit_price,
-                        'quantity' => $item->quantity
-                    ];
-                })
+                'products' => $products
             ]);
+
         });
     }
-
     public function index()
     {
         $orders = Order::with(['user', 'guest', 'address', 'items.product'])

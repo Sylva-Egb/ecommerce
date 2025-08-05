@@ -5,13 +5,15 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
-import { ShoppingBag as ShoppingBagIcon, X } from 'lucide-vue-next';
+import { Link, useForm, usePage } from '@inertiajs/vue3';
+import { ShoppingBag as ShoppingBagIcon, X, CheckCircle } from 'lucide-vue-next';
 import { useCartStore } from '@/Stores/cartStore';
-import { usePage } from '@inertiajs/vue3';
 
 const showingNavigationDropdown = ref(false);
 const isCartOpen = ref(false);
+const showOrderModal = ref(false);
+const showSuccessModal = ref(false);
+const orderData = ref(null);
 const cartStore = useCartStore();
 const page = usePage();
 
@@ -21,10 +23,90 @@ const cartItems = computed(() => cartStore.items);
 const cartCount = computed(() => cartStore.totalItems);
 const cartTotal = computed(() => cartStore.totalPrice);
 
+// Formulaire de commande prérempli avec les infos utilisateur
+const form = useForm({
+items: cartStore.items.length > 0
+    ? cartStore.items.map(item => ({
+        product_id: item.id,
+        quantity: item.quantity
+    }))
+    : [], // Retourne un tableau vide si panier vide
+    is_self_receiving: true,
+    address: {
+        full_name: page.props.auth.user?.name || '',
+        address_line: '',
+        city: '',
+        zip_code: '',
+        country: "Côte d'Ivoire",
+        phone: page.props.auth.user?.phone || ''
+    }
+});
+
+function submitOrder() {
+    // Créez un nouvel objet formData sans l'adresse si is_self_receiving est true
+    const formData = {
+        items: form.items,
+        is_self_receiving: form.is_self_receiving
+    };
+
+    // Ajoutez l'adresse seulement si nécessaire
+    if (!form.is_self_receiving) {
+        formData.address = {
+            full_name: form.address.full_name,
+            address_line: form.address.address_line,
+            city: form.address.city,
+            zip_code: form.address.zip_code,
+            country: form.address.country,
+            phone: form.address.phone
+        };
+    }
+
+    // Utilisez form.transform pour envoyer les données correctement
+    form.transform(() => formData).post(route('orders.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showOrderModal.value = false;
+            showSuccessModal.value = true;
+            cartStore.clearCart();
+        },
+        onError: (errors) => {
+            console.log('Validation errors:', errors);
+        }
+    });
+}
+
 // Methods
 const toggleCart = () => {
   isCartOpen.value = !isCartOpen.value;
 };
+
+// Ouvrir le modal de commande
+function openOrderModal() {
+
+    form.items = cartItems.value.map(item => ({
+        product_id: item.id,
+        quantity: item.quantity
+    }));
+    showOrderModal.value = true;
+    isCartOpen.value = false;
+}
+
+// Soumettre la commande
+/* function submitOrder() {
+    form.post(route('orders.store'), {
+        preserveScroll: true,
+        onSuccess: (response) => {
+            showOrderModal.value = false;
+            showSuccessModal.value = true;
+            orderData.value = response.props.order;
+            cartStore.clearCart();
+        },
+        onError: (errors) => {
+            console.log('Validation errors:', errors);
+        }
+    });
+} */
+
 
 const updateQuantity = async (productId, quantity) => {
   await cartStore.updateQuantity(productId, quantity);
@@ -119,7 +201,7 @@ const removeFromCart = async (productId) => {
                                             <div v-for="item in cartItems" :key="item.id"
                                                 class="p-4 border-b border-gray-100 hover:bg-pink-50 transition-colors">
                                                 <div class="flex gap-3">
-                                                    <img :src="item.image || 'https://via.placeholder.com/80'" :alt="item.name"
+                                                    <img :src="item.image_url || 'https://via.placeholder.com/80'" :alt="item.name"
                                                         class="w-16 h-16 object-cover rounded-lg">
                                                     <div class="flex-1">
                                                         <h4 class="font-medium text-gray-800">{{ item.name }}</h4>
@@ -154,11 +236,10 @@ const removeFromCart = async (productId) => {
                                                 <span class="text-pink-600 font-bold text-lg">{{ cartTotal }} FCFA</span>
                                             </div>
 
-                                            <Link :href="route('orders.store')"
-                                                class="block w-full text-center bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg transition-colors"
-                                                @click="isCartOpen = false">
+                                            <button @click="openOrderModal"
+                                                class="block w-full text-center bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg transition-colors">
                                                 Passer la commande
-                                            </Link>
+                                            </button>
 
                                             <button @click="isCartOpen = false"
                                                 class="w-full mt-2 text-center text-pink-600 hover:text-pink-700 text-sm underline">
@@ -308,6 +389,153 @@ const removeFromCart = async (productId) => {
                     </div>
                 </div>
             </nav>
+
+                        <!-- Modal de commande pour utilisateur authentifié -->
+            <transition name="modal">
+                <div v-if="showOrderModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div @click.self="showOrderModal = false" class="fixed inset-0 bg-black/30 backdrop-blur-sm"></div>
+
+                    <div class="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-200">
+                        <!-- En-tête -->
+                        <div class="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center z-10">
+                            <h2 class="text-xl font-bold text-gray-900">Passer commande</h2>
+                            <button @click="showOrderModal = false" class="text-gray-400 hover:text-gray-500">
+                                <X class="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <!-- Contenu -->
+                        <div class="p-6">
+                            <!-- Récapitulatif des produits -->
+                            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                                <h3 class="font-medium text-gray-900 mb-3">Votre commande</h3>
+                                <div class="space-y-4">
+                                    <div v-for="item in cartItems" :key="item.id" class="flex items-center">
+                                        <img :src="item.image_url || 'https://via.placeholder.com/60'" :alt="item.name"
+                                             class="w-12 h-12 object-cover rounded-md mr-4">
+                                        <div class="flex-1">
+                                            <h4 class="text-sm font-medium">{{ item.name }}</h4>
+                                            <p class="text-xs text-gray-500">Quantité: {{ item.quantity }}</p>
+                                        </div>
+                                        <span class="text-pink-600 font-bold">{{ (item.price * item.quantity).toFixed(2) }} FCFA</span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-center mt-4 pt-3 border-t border-gray-200">
+                                    <span class="font-medium">Total</span>
+                                    <span class="text-pink-600 font-bold text-lg">{{ cartTotal }} FCFA</span>
+                                </div>
+                            </div>
+
+                            <!-- Formulaire client -->
+                            <div class="space-y-6">
+                                <div class="px-6 py-4 border-t border-gray-200">
+                                    <label class="flex items-center cursor-pointer">
+                                        <input type="checkbox" v-model="form.is_self_receiving"
+                                               class="rounded text-pink-600 focus:ring-pink-500">
+                                        <span class="ml-3 text-sm font-medium text-gray-700">
+                                            Je suis le destinataire de la commande
+                                        </span>
+                                    </label>
+                                </div>
+
+                                <!-- Adresse de livraison -->
+                                <div v-if="!form.is_self_receiving">
+                                    <h3 class="text-lg font-medium text-gray-900 mb-4">Adresse de livraison</h3>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div class="md:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom complet *</label>
+                                            <input v-model="form.address.full_name" type="text" :required="!form.is_self_receiving"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Adresse *</label>
+                                            <input v-model="form.address.address_line" type="text" :required="!form.is_self_receiving"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville *</label>
+                                            <input v-model="form.address.city" type="text" :required="!form.is_self_receiving"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label>
+                                            <input v-model="form.address.zip_code" type="text"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Pays *</label>
+                                            <select v-model="form.address.country" :required="!form.is_self_receiving"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                                <option value="Côte d'Ivoire">Côte d'Ivoire</option>
+                                                <option value="France">France</option>
+                                                <option value="Autre">Autre</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone *</label>
+                                            <input v-model="form.address.phone" type="tel" :required="!form.is_self_receiving"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pied de page -->
+                            <div class="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-200 flex justify-end">
+                                <button @click="showOrderModal = false" type="button"
+                                        class="mr-3 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                                    Annuler
+                                </button>
+                                <button @click="submitOrder" type="button" :disabled="form.processing"
+                                        class="px-6 py-2 bg-gradient-to-r from-pink-600 to-amber-600 text-white rounded-lg hover:from-pink-700 hover:to-amber-700 transition disabled:opacity-70">
+                                    Confirmer la commande
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- Modal de succès -->
+            <transition name="modal">
+                <div v-if="showSuccessModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div @click.self="showSuccessModal = false" class="fixed inset-0 bg-black/30 backdrop-blur-sm"></div>
+
+                    <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+                        <!-- En-tête -->
+                        <div class="bg-gradient-to-r from-pink-600 to-amber-600 p-6 text-white text-center">
+                            <CheckCircle class="w-12 h-12 mx-auto mb-2" />
+                            <h3 class="text-xl font-bold">Commande confirmée !</h3>
+                        </div>
+
+                        <!-- Corps -->
+                        <div class="p-6">
+                            <div class="flex items-center mb-4">
+                                <div>
+                                    <p class="text-gray-600">
+                                        Votre commande a bien été enregistrée.
+                                    </p>
+                                    <p class="text-pink-600 font-bold mt-2">Numéro: {{ orderData?.order_number }}</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3 mt-6">
+                                <a :href="orderData?.invoice_url" target="_blank"
+                                   class="w-full px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition flex items-center justify-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                    Télécharger la facture
+                                </a>
+                                <Link :href="route('orders.index')"
+                                      class="block w-full px-4 py-2 bg-white border border-pink-600 text-pink-600 rounded-lg hover:bg-pink-50 transition">
+                                    Voir mes commandes
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
 
             <!-- Page Heading -->
             <header class="bg-white shadow" v-if="$slots.header">

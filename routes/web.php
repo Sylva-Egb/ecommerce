@@ -84,4 +84,15 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+Route::get('/commande/success', function () {
+    return Inertia::render('Order/Success', [
+        'order' => [
+            'order_number' => request('order_number'),
+            'total_price' => request('total_price'),
+            'invoice_url' => request('invoice_url')
+        ],
+        'products' => request('products')
+    ]);
+})->name('orders.success');
+
 require __DIR__.'/auth.php';
