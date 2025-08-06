@@ -13,11 +13,20 @@ class CartController extends Controller
 {
     protected function getCartKey(Request $request)
     {
-        return Auth::check()
-            ? 'user_cart_'.Auth::id()
-            : 'guest_cart_'.$request->cookie('guest_cart_id', function() {
-                return uniqid();
-            });
+        if (Auth::check()) {
+            return 'user_cart_'.Auth::id();
+        }
+
+        // Pour les invités, utilisez toujours le même cookie guest_cart_id
+        $guestCartId = $request->cookie('guest_cart_id');
+        if (!$guestCartId) {
+            $guestCartId = uniqid();
+        }
+
+        // Stockez l'ID dans un cookie long terme
+        Cookie::queue('guest_cart_id', $guestCartId, 60*24*30); // 30 jours
+
+        return 'guest_cart_'.$guestCartId;
     }
 
     public function index(Request $request)
@@ -49,26 +58,27 @@ class CartController extends Controller
         // Fusionner les paniers (priorité à la session)
         $mergedCart = array_merge($cookieCart, $sessionCart);
 
-        $products = Product::whereIn('id', array_keys($mergedCart))->get()
-            ->map(function ($product) use ($mergedCart) {
-                return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'price' => $product->price,
-                    'image_url' => $product->image_url,
-                    'quantity' => $mergedCart[$product->id]['quantity']
-                ];
-            });
+        $items = collect($mergedCart)->map(function ($item, $productId) {
+            $product = Product::find($productId);
+            return $product ? [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => $product->price,
+                'image_url' => $product->image_url,
+                'quantity' => $item['quantity']
+            ] : null;
+        })->filter()->values();
 
         $response = response()->json([
-            'items' => $products,
-            'total' => $products->sum(fn($item) => $item['price'] * $item['quantity'])
+            'items' => $items,
+            'total' => $items->sum(fn($item) => $item['price'] * $item['quantity'])
         ]);
+
 
         // Stocker dans un cookie si invité
         if (!Auth::check()) {
-            $response->cookie('cart_items', json_encode($mergedCart), 60*24*30); // 30 jours
-            $response->cookie('guest_cart_id', $cartKey, 60*24*30);
+            $response->cookie('cart_items', json_encode($mergedCart), 60*24*30)
+                    ->cookie('guest_cart_id', explode('_', $cartKey)[2], 60*24*30);
         }
 
         return $response;
@@ -91,7 +101,6 @@ class CartController extends Controller
 
         // Pour les invités
         $sessionCart = $request->session()->get($cartKey, []);
-        $cookieCart = json_decode($request->cookie('cart_items', '[]'), true);
 
         $quantity = $request->input('quantity', 1);
 
@@ -106,8 +115,23 @@ class CartController extends Controller
 
         $request->session()->put($cartKey, $sessionCart);
 
-        $response = $this->index($request);
-        return $response->cookie('cart_items', json_encode($sessionCart), 60*24*30);
+        // Retournez directement les items de la session
+        $items = collect($sessionCart)->map(function ($item, $productId) {
+            $product = Product::find($productId);
+            return $product ? [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => $product->price,
+                'image_url' => $product->image_url,
+                'quantity' => $item['quantity']
+            ] : null;
+        })->filter()->values();
+
+        return response()->json([
+            'items' => $items,
+            'total' => $items->sum(fn($item) => $item['price'] * $item['quantity'])
+        ])->cookie('cart_items', json_encode($sessionCart), 60*24*30)
+        ->cookie('guest_cart_id', explode('_', $cartKey)[2], 60*24*30);
     }
 
     public function updateItem(Request $request, Product $product)

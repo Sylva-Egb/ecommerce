@@ -15,22 +15,45 @@ export const useCartStore = defineStore('cart', {
 
     actions: {
         async fetchCart() {
-            this.loading = true
+            this.loading = true;
             try {
-                const response = await axios.get('/cart')
-                this.items = response.data.items
-                // Sauvegarder dans localStorage pour persistance côté client
-                localStorage.setItem('cart_items', JSON.stringify(this.items))
+                const response = await axios.get('/cart');
+
+                // Si le panier est vide mais qu'on a des items en local
+                if (response.data.items.length === 0 && this.items.length > 0) {
+                    // Essayer de resynchroniser
+                    await this.syncLocalCart();
+                    return;
+                }
+
+                this.items = response.data.items;
+                localStorage.setItem('cart_items', JSON.stringify(this.items));
             } catch (error) {
-                console.error('Error fetching cart:', error)
-                // Si erreur 401, tenter de récupérer depuis localStorage
+                console.error('Error fetching cart:', error);
                 if (error.response?.status === 401) {
-                    const localCart = JSON.parse(localStorage.getItem('cart_items') || '[]')
-                    this.items = localCart
-                    router.visit('/login')
+                    const localCart = JSON.parse(localStorage.getItem('cart_items') || '[]');
+                    this.items = localCart;
                 }
             } finally {
-                this.loading = false
+                this.loading = false;
+            }
+        },
+
+        async syncLocalCart() {
+            try {
+                // Envoyer tous les items locaux au serveur
+                await Promise.all(this.items.map(item =>
+                    axios.post('/cart/add', {
+                        product_id: item.id,
+                        quantity: item.quantity,
+                        price: item.price,
+                        image: item.image
+                    })
+                ));
+                // Recharger le panier
+                await this.fetchCart();
+            } catch (error) {
+                console.error('Sync failed:', error);
             }
         },
 
