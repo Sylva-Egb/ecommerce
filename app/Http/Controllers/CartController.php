@@ -3,62 +3,61 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
-use App\Models\CartItem; // Nouveau modèle
+use App\Models\CartItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\DB; // Pour les requêtes raw
+use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
+    protected function getGuestCartId(Request $request)
+    {
+        $guestCartId = $request->cookie('guest_cart_id');
+        if (!$guestCartId) {
+            $guestCartId = uniqid('guest_', true);
+            Cookie::queue('guest_cart_id', $guestCartId, 60*24*30); // 30 jours
+        }
+        return $guestCartId;
+    }
+
     protected function getCartKey(Request $request)
     {
         if (Auth::check()) {
             return 'user_cart_'.Auth::id();
         }
 
-        // Pour les invités, utilisez toujours le même cookie guest_cart_id
-        $guestCartId = $request->cookie('guest_cart_id');
-        if (!$guestCartId) {
-            $guestCartId = uniqid();
-        }
-
-        // Stockez l'ID dans un cookie long terme
-        Cookie::queue('guest_cart_id', $guestCartId, 60*24*30); // 30 jours
-
+        $guestCartId = $this->getGuestCartId($request);
         return 'guest_cart_'.$guestCartId;
     }
 
     public function index(Request $request)
     {
-        $cartKey = $this->getCartKey($request);
-
-        // Pour les utilisateurs authentifiés, vérifier la base de données
         if (Auth::check()) {
+            // Utilisateur connecté : récupérer depuis la base de données
             $cartItems = Auth::user()->cartItems()->with('product')->get();
 
+            $items = $cartItems->map(function ($item) {
+                return [
+                    'id' => $item->product_id,
+                    'name' => $item->product->name,
+                    'price' => $item->product->price,
+                    'image_url' => $item->product->image_url,
+                    'quantity' => $item->quantity
+                ];
+            });
+
             return response()->json([
-                'items' => $cartItems->map(function ($item) {
-                    return [
-                        'id' => $item->product_id,
-                        'name' => $item->product->name,
-                        'price' => $item->product->price,
-                        'image_url' => $item->product->image_url,
-                        'quantity' => $item->quantity
-                    ];
-                }),
-                'total' => $cartItems->sum(fn($item) => $item->product->price * $item->quantity)
+                'items' => $items,
+                'total' => $items->sum(fn($item) => $item['price'] * $item['quantity'])
             ]);
         }
 
-        // Pour les invités, vérifier session + cookie
+        // Utilisateur non connecté : récupérer depuis la session
+        $cartKey = $this->getCartKey($request);
         $sessionCart = $request->session()->get($cartKey, []);
-        $cookieCart = json_decode($request->cookie('cart_items', '[]'), true);
 
-        // Fusionner les paniers (priorité à la session)
-        $mergedCart = array_merge($cookieCart, $sessionCart);
-
-        $items = collect($mergedCart)->map(function ($item, $productId) {
+        $items = collect($sessionCart)->map(function ($item, $productId) {
             $product = Product::find($productId);
             return $product ? [
                 'id' => $product->id,
@@ -74,35 +73,34 @@ class CartController extends Controller
             'total' => $items->sum(fn($item) => $item['price'] * $item['quantity'])
         ]);
 
-
-        // Stocker dans un cookie si invité
-        if (!Auth::check()) {
-            $response->cookie('cart_items', json_encode($mergedCart), 60*24*30)
-                    ->cookie('guest_cart_id', explode('_', $cartKey)[2], 60*24*30);
-        }
-
-        return $response;
+        // S'assurer que le cookie guest_cart_id est défini
+        $guestCartId = $this->getGuestCartId($request);
+        return $response->cookie('guest_cart_id', $guestCartId, 60*24*30);
     }
 
     public function addItem(Request $request)
     {
-        $product = Product::findOrFail($request->input('product_id'));
-        $cartKey = $this->getCartKey($request);
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'integer|min:1',
+        ]);
 
-        // Pour les utilisateurs authentifiés
+        $product = Product::findOrFail($request->input('product_id'));
+        $quantity = $request->input('quantity', 1);
+
         if (Auth::check()) {
+            // Utilisateur connecté
             $cartItem = Auth::user()->cartItems()->updateOrCreate(
                 ['product_id' => $product->id],
-                ['quantity' => DB::raw('quantity + '.$request->input('quantity', 1))]
+                ['quantity' => DB::raw('quantity + '.$quantity)]
             );
 
             return $this->index($request);
         }
 
-        // Pour les invités
+        // Utilisateur non connecté : utiliser la session
+        $cartKey = $this->getCartKey($request);
         $sessionCart = $request->session()->get($cartKey, []);
-
-        $quantity = $request->input('quantity', 1);
 
         if (isset($sessionCart[$product->id])) {
             $sessionCart[$product->id]['quantity'] += $quantity;
@@ -115,7 +113,7 @@ class CartController extends Controller
 
         $request->session()->put($cartKey, $sessionCart);
 
-        // Retournez directement les items de la session
+        // Retourner la réponse avec les items mis à jour
         $items = collect($sessionCart)->map(function ($item, $productId) {
             $product = Product::find($productId);
             return $product ? [
@@ -127,68 +125,77 @@ class CartController extends Controller
             ] : null;
         })->filter()->values();
 
+        $guestCartId = $this->getGuestCartId($request);
+
         return response()->json([
             'items' => $items,
             'total' => $items->sum(fn($item) => $item['price'] * $item['quantity'])
-        ])->cookie('cart_items', json_encode($sessionCart), 60*24*30)
-        ->cookie('guest_cart_id', explode('_', $cartKey)[2], 60*24*30);
+        ])->cookie('guest_cart_id', $guestCartId, 60*24*30);
     }
 
-    public function updateItem(Request $request, Product $product)
+    public function updateItem(Request $request, $productId)
     {
-        $cartKey = $this->getCartKey($request);
+        $request->validate([
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = Product::findOrFail($productId);
+        $quantity = $request->input('quantity');
 
         if (Auth::check()) {
             Auth::user()->cartItems()
                 ->where('product_id', $product->id)
-                ->update(['quantity' => max(1, $request->input('quantity'))]);
+                ->update(['quantity' => $quantity]);
+        } else {
+            $cartKey = $this->getCartKey($request);
+            $sessionCart = $request->session()->get($cartKey, []);
 
-            return $this->index($request);
+            if (isset($sessionCart[$product->id])) {
+                $sessionCart[$product->id]['quantity'] = $quantity;
+                $request->session()->put($cartKey, $sessionCart);
+            }
         }
 
-        $sessionCart = $request->session()->get($cartKey, []);
-        $cookieCart = json_decode($request->cookie('cart_items', '[]'), true);
-
-        if (isset($sessionCart[$product->id])) {
-            $sessionCart[$product->id]['quantity'] = max(1, $request->input('quantity'));
-            $request->session()->put($cartKey, $sessionCart);
-        }
-
-        $response = $this->index($request);
-        return $response->cookie('cart_items', json_encode($sessionCart), 60*24*30);
+        return $this->index($request);
     }
 
-    public function removeItem(Request $request, Product $product)
+    public function removeItem(Request $request, $productId)
     {
-        $cartKey = $this->getCartKey($request);
+        $product = Product::findOrFail($productId);
 
         if (Auth::check()) {
             Auth::user()->cartItems()->where('product_id', $product->id)->delete();
-            return $this->index($request);
+        } else {
+            $cartKey = $this->getCartKey($request);
+            $sessionCart = $request->session()->get($cartKey, []);
+            unset($sessionCart[$product->id]);
+            $request->session()->put($cartKey, $sessionCart);
         }
 
-        $sessionCart = $request->session()->get($cartKey, []);
-        $cookieCart = json_decode($request->cookie('cart_items', '[]'), true);
-
-        unset($sessionCart[$product->id]);
-        $request->session()->put($cartKey, $sessionCart);
-
-        $response = $this->index($request);
-        return $response->cookie('cart_items', json_encode($sessionCart), 60*24*30);
+        return $this->index($request);
     }
 
     public function clearCart(Request $request)
     {
-        $cartKey = $this->getCartKey($request);
-
         if (Auth::check()) {
             Auth::user()->cartItems()->delete();
-            return response()->json(['message' => 'Cart cleared']);
+        } else {
+            $cartKey = $this->getCartKey($request);
+            $request->session()->forget($cartKey);
         }
 
-        $request->session()->forget($cartKey);
-        $response = response()->json(['message' => 'Cart cleared']);
-        return $response->withoutCookie('cart_items');
+        $response = response()->json([
+            'items' => [],
+            'total' => 0,
+            'message' => 'Cart cleared'
+        ]);
+
+        if (!Auth::check()) {
+            $guestCartId = $this->getGuestCartId($request);
+            $response->cookie('guest_cart_id', $guestCartId, 60*24*30);
+        }
+
+        return $response;
     }
 
     public function migrateGuestCart(Request $request)
@@ -198,23 +205,32 @@ class CartController extends Controller
         }
 
         $guestCartId = $request->cookie('guest_cart_id');
-        if ($guestCartId) {
-            $sessionCart = $request->session()->get($guestCartId, []);
-            $cookieCart = json_decode($request->cookie('cart_items', '[]'), true);
-            $mergedCart = array_merge($cookieCart, $sessionCart);
-
-            foreach ($mergedCart as $productId => $item) {
-                Auth::user()->cartItems()->updateOrCreate(
-                    ['product_id' => $productId],
-                    ['quantity' => DB::raw('quantity + '.$item['quantity'])]
-                );
-            }
-
-            $request->session()->forget($guestCartId);
-            $response = $this->index($request);
-            return $response->withoutCookie('cart_items')->withoutCookie('guest_cart_id');
+        if (!$guestCartId) {
+            return $this->index($request);
         }
 
-        return $this->index($request);
+        $guestCartKey = 'guest_cart_'.$guestCartId;
+        $sessionCart = $request->session()->get($guestCartKey, []);
+
+        if (empty($sessionCart)) {
+            return $this->index($request);
+        }
+
+        // Migrer chaque item vers la base de données
+        foreach ($sessionCart as $productId => $item) {
+            $product = Product::find($productId);
+            if ($product) {
+                Auth::user()->cartItems()->updateOrCreate(
+                    ['product_id' => $productId],
+                    ['quantity' => DB::raw('COALESCE(quantity, 0) + '.$item['quantity'])]
+                );
+            }
+        }
+
+        // Nettoyer la session invité
+        $request->session()->forget($guestCartKey);
+
+        $response = $this->index($request);
+        return $response->withoutCookie('guest_cart_id');
     }
 }

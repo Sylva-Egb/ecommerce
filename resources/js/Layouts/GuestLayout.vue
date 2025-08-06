@@ -344,12 +344,20 @@ import {
 } from 'lucide-vue-next'
 
 import { useCartStore } from '@/Stores/cartStore'
+import { usePage } from '@inertiajs/vue3'
+
+const page = usePage()
 const cartStore = useCartStore()
 const isCartOpen = ref(false)
 const isMobileMenuOpen = ref(false)
 const showOrderModal = ref(false)
 const showSuccessModal = ref(false)
 const orderData = ref(null)
+
+onMounted(() => {
+    const isAuthenticated = !!page.props.auth.user
+    cartStore.initialize(isAuthenticated)
+})
 
 // Formulaire de commande
 const form = useForm({
@@ -389,18 +397,69 @@ function openOrderModal() {
 
 // Soumettre la commande
 function submitOrder() {
-    form.post(route('orders.store'), {
+    // Validation côté client pour les invités
+    if (!page.props.auth.user) {
+        if (!form.guest.name || !form.guest.phone) {
+            alert('Veuillez remplir votre nom et téléphone');
+            return;
+        }
+
+        if (form.create_account && (!form.password || form.password.length < 8)) {
+            alert('Le mot de passe doit contenir au moins 8 caractères');
+            return;
+        }
+    }
+
+    // Préparer les données à envoyer
+    const formData = {
+        items: cartStore.items.map(item => ({
+            product_id: item.id,
+            quantity: item.quantity
+        })),
+        is_self_receiving: form.is_self_receiving,
+        create_account: form.create_account,
+        // Ne pas inclure password si create_account est false
+        ...(form.create_account && { password: form.password }),
+        // Envoyer un tableau vide pour address si is_self_receiving est true
+        address: form.is_self_receiving ? [] : {
+            full_name: form.address.full_name,
+            address_line: form.address.address_line,
+            city: form.address.city,
+            zip_code: form.address.zip_code,
+            country: form.address.country,
+            phone: form.address.phone
+        }
+    };
+
+    // Ajouter les données guest si utilisateur non connecté
+    if (!page.props.auth.user) {
+        formData.guest = {
+            name: form.guest.name,
+            email: form.guest.email,
+            phone: form.guest.phone
+        };
+    }
+
+    // Soumettre le formulaire
+    form.transform(() => formData).post(route('orders.store'), {
         preserveScroll: true,
-        preserveState: true, // Important pour éviter la redirection
-        onSuccess: () => {
-            showOrderModal.value = false
-            showSuccessModal.value = true
-            cartStore.clearCart()
+        onSuccess: (response) => {
+            showOrderModal.value = false;
+            orderData.value = response.props.order;
+            showSuccessModal.value = true;
+            cartStore.clearCart();
         },
         onError: (errors) => {
-            console.log('Erreurs de validation:', errors)
+            console.error('Erreurs de validation:', errors);
+            // Afficher les erreurs à l'utilisateur
+            if (errors.password) {
+                alert(errors.password);
+            }
+            if (errors.address) {
+                alert(errors.address);
+            }
         }
-    })
+    });
 }
 
 

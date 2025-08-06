@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Barryvdh\DomPDF\Facade\Pdf; // Import correct pour Laravel 8+
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class OrderController extends Controller
@@ -26,43 +27,117 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
+        $isGuest = !$user;
 
-        $validated = $request->validate([
+        // Validation adaptée selon le type d'utilisateur
+        $validationRules = [
             'items' => 'required|array',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'is_self_receiving' => 'required|boolean',
+            'address' => 'array', // Toujours un array, pas de required_if
+        ];
 
-            // Validation conditionnelle pour l'adresse
-            'address' => [
-                'required_if:is_self_receiving,false',
-                'array'
-            ],
-            'address.full_name' => 'required_if:is_self_receiving,false|string|max:255',
-            'address.address_line' => 'required_if:is_self_receiving,false|string|max:255',
-            'address.city' => 'required_if:is_self_receiving,false|string|max:255',
-            'address.zip_code' => 'nullable|string|max:255',
-            'address.country' => 'required_if:is_self_receiving,false|string|max:255',
-            'address.phone' => 'required_if:is_self_receiving,false|string|max:255'
-        ]);
+        // Validation pour les invités
+        if ($isGuest) {
+            $validationRules = array_merge($validationRules, [
+                'guest' => 'required|array',
+                'guest.name' => 'required|string|max:255',
+                'guest.email' => 'nullable|email|max:255',
+                'guest.phone' => 'required|string|max:255',
+                'create_account' => 'nullable|boolean',
+                'password' => [
+                    Rule::requiredIf(function () use ($request) {
+                        return $request->input('create_account', false);
+                    }),
+                    'min:8',
+                    'confirmed'
+                ],
+            ]);
+        }
 
+        // Validation conditionnelle pour les champs d'adresse
+        // Seulement si is_self_receiving est false
+        if (!$request->input('is_self_receiving', true)) {
+            $validationRules = array_merge($validationRules, [
+                'address.full_name' => 'required|string|max:255',
+                'address.address_line' => 'required|string|max:255',
+                'address.city' => 'required|string|max:255',
+                'address.zip_code' => 'nullable|string|max:255',
+                'address.country' => 'required|string|max:255',
+                'address.phone' => 'required|string|max:255'
+            ]);
+        }
 
-        return DB::transaction(function () use ($validated, $user) {
+        $validated = $request->validate($validationRules);
+
+        return DB::transaction(function () use ($validated, $user, $isGuest, $request) {
+            $guest = null;
+            $finalUser = $user;
+
+            // Gestion des invités
+            if ($isGuest) {
+                // Vérifier si un utilisateur existe déjà avec cet email
+                $existingUser = null;
+                if (!empty($validated['guest']['email'])) {
+                    $existingUser = User::where('email', $validated['guest']['email'])->first();
+                }
+
+                // Si création de compte demandée et pas d'utilisateur existant
+                if (!empty($validated['create_account']) && !$existingUser) {
+                    $finalUser = User::create([
+                        'name' => $validated['guest']['name'],
+                        'email' => $validated['guest']['email'] ?? null,
+                        'phone' => $validated['guest']['phone'],
+                        'password' => Hash::make($validated['password']),
+                        'role' => 'user'
+                    ]);
+
+                    // Connecter automatiquement l'utilisateur
+                    Auth::login($finalUser);
+                    $isGuest = false;
+
+                    // Déclencher l'événement de connexion pour migrer le panier
+                    event('user-logged-in', $finalUser);
+                } else {
+                    // Créer un enregistrement invité
+                    $guest = Guest::create([
+                        'name' => $validated['guest']['name'],
+                        'email' => $validated['guest']['email'] ?? null,
+                        'phone' => $validated['guest']['phone'],
+                    ]);
+                }
+            }
+
             // Créer l'adresse
             $addressData = [
-                'user_id' => $user->id,
-                'country' => $validated['is_self_receiving'] ? 'Côte d\'Ivoire' : $validated['address']['country']
+                'user_id' => $finalUser?->id,
+                'guest_id' => $guest?->id,
+                'country' => $validated['is_self_receiving'] ? 'Côte d\'Ivoire' : ($validated['address']['country'] ?? 'Côte d\'Ivoire')
             ];
 
             if ($validated['is_self_receiving']) {
-                $addressData = array_merge($addressData, [
-                    'full_name' => $user->name,
-                    'address_line' => $user->address?->address_line ?? '',
-                    'city' => $user->address?->city ?? '',
-                    'zip_code' => $user->address?->zip_code ?? '',
-                    'phone' => $user->phone
-                ]);
+                if ($finalUser) {
+                    // Utiliser les données de l'utilisateur connecté
+                    $addressData = array_merge($addressData, [
+                        'full_name' => $finalUser->name,
+                        'address_line' => $finalUser->address?->address_line ?? 'Non renseigné',
+                        'city' => $finalUser->address?->city ?? 'Non renseigné',
+                        'zip_code' => $finalUser->address?->zip_code ?? '',
+                        'phone' => $finalUser->phone
+                    ]);
+                } else {
+                    // Utiliser les données de l'invité
+                    $addressData = array_merge($addressData, [
+                        'full_name' => $guest->name,
+                        'address_line' => 'À confirmer par téléphone',
+                        'city' => 'À confirmer par téléphone',
+                        'zip_code' => '',
+                        'phone' => $guest->phone
+                    ]);
+                }
             } else {
+                // Utiliser l'adresse fournie
                 $addressData = array_merge($addressData, [
                     'full_name' => $validated['address']['full_name'],
                     'address_line' => $validated['address']['address_line'],
@@ -79,7 +154,8 @@ class OrderController extends Controller
 
             // Créer la commande
             $order = Order::create([
-                'user_id' => $user->id,
+                'user_id' => $finalUser?->id,
+                'guest_id' => $guest?->id,
                 'address_id' => $address->id,
                 'order_number' => $orderNumber,
                 'total_price' => 0, // Calculé plus bas
@@ -90,7 +166,6 @@ class OrderController extends Controller
             $orderItems = [];
             $products = [];
 
-
             foreach ($validated['items'] as $item) {
                 $product = Product::findOrFail($item['product_id']);
                 $totalPrice += $product->price * $item['quantity'];
@@ -100,6 +175,8 @@ class OrderController extends Controller
                     'product_id' => $product->id,
                     'quantity' => $item['quantity'],
                     'unit_price' => $product->price,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ];
 
                 $products[] = [
@@ -117,19 +194,42 @@ class OrderController extends Controller
             // Créer tous les items en une seule requête
             OrderItem::insert($orderItems);
 
-            // Envoyer l'email de confirmation
-            $order->load(['items.product', 'address']);
-            Mail::to($user->email)->send(new OrderConfirmation($order));
+            // Envoyer l'email de confirmation si email disponible
+            $order->load(['items.product', 'address', 'user', 'guest']);
+
+            $recipientEmail = $finalUser?->email ?? $guest?->email;
+            $recipientName = $finalUser?->name ?? $guest?->name;
+
+            if ($recipientEmail) {
+                try {
+                    Mail::to($recipientEmail)->send(new OrderConfirmation($order, $recipientName));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send order confirmation email: ' . $e->getMessage());
+                }
+            }
+
+            // Vider le panier après commande réussie
+            if ($finalUser) {
+                $finalUser->cartItems()->delete();
+            } else {
+                $guestCartId = $request->cookie('guest_cart_id');
+                if ($guestCartId) {
+                    $guestCartKey = 'guest_cart_' . $guestCartId;
+                    $request->session()->forget($guestCartKey);
+                }
+            }
 
             return Inertia::render('Order/Success', [
                 'order' => [
                     'order_number' => $orderNumber,
                     'total_price' => $totalPrice,
                     'invoice_url' => route('order.invoice', $order->id),
+                    'customer_name' => $recipientName,
+                    'customer_email' => $recipientEmail,
                 ],
-                'products' => $products
+                'products' => $products,
+                'user_created' => !$isGuest && !$user,
             ]);
-
         });
     }
     public function index()

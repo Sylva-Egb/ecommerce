@@ -45,13 +45,13 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
 });
 
 Route::prefix('cart')->group(function () {
-    Route::get('/', [CartController::class, 'index']);
-    Route::post('/add', [CartController::class, 'addItem']);
-    Route::put('/update/{product}', [CartController::class, 'updateItem']);
-    Route::delete('/remove/{product}', [CartController::class, 'removeItem']);
-    Route::delete('/clear', [CartController::class, 'clearCart']);
+    Route::get('/', [CartController::class, 'index'])->name('cart.index');
+    Route::post('/add', [CartController::class, 'addItem'])->name('cart.add');
+    Route::put('/update/{productId}', [CartController::class, 'updateItem'])->name('cart.update');
+    Route::delete('/remove/{productId}', [CartController::class, 'removeItem'])->name('cart.remove');
+    Route::delete('/clear', [CartController::class, 'clearCart'])->name('cart.clear');
+    Route::post('/migrate', [CartController::class, 'migrateGuestCart'])->name('cart.migrate');
 });
-
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [

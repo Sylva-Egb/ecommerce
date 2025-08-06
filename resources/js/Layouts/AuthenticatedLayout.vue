@@ -8,6 +8,7 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { ShoppingBag as ShoppingBagIcon, X, CheckCircle } from 'lucide-vue-next';
 import { useCartStore } from '@/Stores/cartStore';
+import { onMounted } from 'vue';
 
 const showingNavigationDropdown = ref(false);
 const isCartOpen = ref(false);
@@ -16,6 +17,11 @@ const showSuccessModal = ref(false);
 const orderData = ref(null);
 const cartStore = useCartStore();
 const page = usePage();
+
+onMounted(() => {
+    const isAuthenticated = !!page.props.auth.user
+    cartStore.initialize(isAuthenticated)
+})
 
 // Computed properties
 const isAdmin = computed(() => page.props.auth.user?.role === 'admin');
