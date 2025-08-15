@@ -130,7 +130,7 @@ const ordersByStatusData = {
         </div>
 
         <!-- Alertes stock -->
-        <div v-if="lowStockProducts.length" class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+        <div v-if="lowStockProducts.length" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 hidden">
           <h3 class="font-bold text-yellow-800">Alertes Stock</h3>
           <ul class="mt-2">
             <li v-for="product in lowStockProducts" :key="product.id" class="text-yellow-700">

@@ -88,38 +88,68 @@ function openOrderModal() {
 }
 
 function submitOrder() {
-    const items = cartStore.items.length > 0
-        ? cartStore.items.map(item => ({
-            product_id: item.id,
-            quantity: item.quantity
-        }))
-        : [{
-            product_id: props.product.id,
-            quantity: quantity.value
-        }];
+    // Validation côté client pour les invités
+    if (!page.props.auth.user) {
+        if (!form.guest.name || !form.guest.phone) {
+            alert('Veuillez remplir votre nom et téléphone');
+            return;
+        }
 
+        if (form.create_account && (!form.password || form.password.length < 8)) {
+            alert('Le mot de passe doit contenir au moins 8 caractères');
+            return;
+        }
+    }
+
+    // Préparer les données à envoyer
     const formData = {
-        items,
+        items: [
+            {
+                product_id: props.product.id,
+                quantity: quantity.value
+            }
+        ],
+        is_self_receiving: isSelfReceiving.value, // Utiliser la valeur du ref isSelfReceiving
         create_account: createAccount.value,
-        password: createAccount.value ? password.value : undefined,
-        is_self_receiving: isSelfReceiving.value,
-        address: isSelfReceiving.value ? null : {
+        // Ne pas inclure password si create_account est false
+        ...(createAccount.value && { password: password.value }),
+        // Toujours envoyer address comme tableau
+        address: isSelfReceiving.value ? [] : {
             full_name: form.address.full_name,
             address_line: form.address.address_line,
             city: form.address.city,
             zip_code: form.address.zip_code,
             country: form.address.country,
             phone: form.address.phone
-        }
+        },
+        // Inclure les données guest si utilisateur non connecté
+        ...(!page.props.auth.user && {
+            guest: {
+                name: form.guest.name,
+                email: form.guest.email,
+                phone: form.guest.phone
+            }
+        })
     };
 
+    // Soumettre le formulaire
     form.transform(() => formData).post(route('orders.store'), {
         preserveScroll: true,
-        onSuccess: () => {
-            showOrderModal.value = false
+        onSuccess: (response) => {
+            showOrderModal.value = false;
+            orderData.value = response.props.order;
+            showSuccessModal.value = true;
+            cartStore.clearCart();
         },
         onError: (errors) => {
-            console.log('Erreurs de validation:', errors);
+            console.error('Erreurs de validation:', errors);
+            // Afficher les erreurs à l'utilisateur
+            if (errors.password) {
+                alert(errors.password);
+            }
+            if (errors.address) {
+                alert(errors.address);
+            }
         }
     });
 }

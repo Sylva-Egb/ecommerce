@@ -52,6 +52,8 @@ class ProductController extends Controller
             $validated['image_url'] = '/storage/' . $path;
         }
 
+        $validated['is_vedette'] = $request->boolean('is_vedette');
+
         Product::create($validated);
 
         return redirect()->route('products.create')->with('success', 'Produit ajouté !');
@@ -64,6 +66,9 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric',
             'image' => 'nullable|image|max:2048',
+            'categorie_id' => 'required|exists:categories,id',
+            'slug' => 'required|string|max:255',
+            'is_vedette' => 'required|boolean',
         ]);
 
         if ($request->hasFile('image')) {
@@ -71,6 +76,7 @@ class ProductController extends Controller
             $validated['image_url'] = "/storage/$path";
         }
 
+        $validated['is_vedette'] = $request->boolean('is_vedette');
         $product->update($validated);
 
         return back()->with('success', 'Produit mis à jour avec succès.');
