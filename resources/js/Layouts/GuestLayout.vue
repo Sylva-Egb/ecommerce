@@ -8,7 +8,7 @@
                     <button @click="isMobileMenuOpen = !isMobileMenuOpen" class="md:hidden text-gray-600">
                         <MenuIcon class="w-6 h-6" />
                     </button>
-                    <Link :href="route('home')" class="text-xl font-bold text-pink-600">🌸 Glamour Cosmetics</Link>
+                    <Link :href="route('home')" class="text-xl font-bold text-pink-600">🌸</Link>
                 </div>
 
                 <!-- Desktop Nav -->
@@ -127,8 +127,8 @@
         </header>
 
         <!-- PAGE CONTENT -->
-        <main class="flex-grow py-10 px-4">
-            <div class="w-full h-full mx-auto bg-white p-6 rounded-xl shadow-md">
+        <main class="flex-grow py-10">
+            <div class="w-full h-full mx-auto bg-white rounded-xl shadow-md">
                 <slot />
             </div>
         </main>
