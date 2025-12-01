@@ -267,9 +267,9 @@ function shareProduct() {
                     </div>
 
                     <div class="mb-6">
-                        <p class="text-3xl font-bold text-pink-600 dark:text-pink-400">{{ product.price }} FCFA</p>
+                        <p class="text-3xl font-bold text-pink-600 dark:text-pink-400">{{ product.price }} €</p>
                         <p v-if="product.old_price" class="text-sm text-gray-500 line-through">{{ product.old_price }}
-                            FCFA</p>
+                            €</p>
                     </div>
 
                     <div class="prose max-w-none text-gray-700 dark:text-gray-300 mb-8 whitespace-pre-line">
@@ -336,7 +336,7 @@ function shareProduct() {
                         </div>
                         <div class="p-4">
                             <h3 class="font-semibold text-lg mb-1 line-clamp-1">{{ related.name }}</h3>
-                            <p class="text-pink-600 dark:text-pink-400 font-bold">{{ related.price }} FCFA</p>
+                            <p class="text-pink-600 dark:text-pink-400 font-bold">{{ related.price }} €</p>
                         </div>
                         </Link>
                     </div>
@@ -373,8 +373,8 @@ function shareProduct() {
                                 <div>
                                     <h3 class="font-medium text-gray-900 dark:text-white">{{ product.name }}</h3>
                                     <p class="text-pink-600 dark:text-pink-400 font-bold">
-                                        {{ product.price }} FCFA × {{ quantity }} = {{ (product.price *
-                                            quantity).toFixed(2) }} FCFA
+                                        {{ product.price }} € × {{ quantity }} = {{ (product.price *
+                                            quantity).toFixed(2) }} €
                                     </p>
                                 </div>
                             </div>

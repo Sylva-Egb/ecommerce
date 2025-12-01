@@ -58,7 +58,7 @@ defineProps({
                                 {{ product.description }}
                             </p>
                             <div class="flex justify-between items-center">
-                                <span class="text-pink-600 dark:text-pink-400 font-bold">{{ product.price }} FCFA</span>
+                                <span class="text-pink-600 dark:text-pink-400 font-bold">{{ product.price }} €</span>
                                 <Link :href="route('products.show', product.id)"
                                     class="inline-flex items-center text-sm text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 font-medium transition">
                                 Voir détails

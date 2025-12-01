@@ -21,10 +21,25 @@ const props = defineProps({
 // Dynamic layout based on authentication
 const layout = computed(() => props.auth.user ? AuthenticatedLayout : GuestLayout)
 
-// Carousel logic
+// Carousel logic - Only products with images or fallback
 const featuredProducts = computed(() => {
-  const vedettes = props.products.filter(p => p.is_vedette)
-  return vedettes.length > 0 ? vedettes : props.products.slice(0, 3)
+  // Filtre les produits vedettes avec images
+  let vedettes = props.products.filter(p => p.is_vedette && p.image_url)
+
+  // Si pas assez de vedettes avec images, prend tous les produits avec images
+  if (vedettes.length === 0) {
+    vedettes = props.products.filter(p => p.image_url).slice(0, 3)
+  }
+
+  // Si toujours aucune image, utilise des produits avec images par défaut
+  if (vedettes.length === 0) {
+    vedettes = props.products.slice(0, 3).map(p => ({
+      ...p,
+      image_url: p.image_url || 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80'
+    }))
+  }
+
+  return vedettes
 })
 
 const currentSlide = ref(0)
@@ -64,89 +79,119 @@ onBeforeUnmount(() => {
   <component :is="layout">
     <Head title="Accueil" />
 
-    <!-- HERO SECTION WITH CAROUSEL -->
-    <section class="relative bg-gradient-to-r from-pink-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-white py-16 md:py-24 px-6 overflow-hidden">
-      <div class="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-10 relative z-10">
-        <div class="flex-1 space-y-6">
-          <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight">
-            Sublimez votre <span class="text-pink-600">beauté</span> naturelle
-          </h1>
-          <p class="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl">
-            Découvrez nos produits phares soigneusement sélectionnés pour révéler votre éclat unique ✨
-          </p>
-
-          <div class="flex flex-wrap gap-4">
-            <Link
-              v-if="canRegister && !auth.user"
-              :href="route('register')"
-              class="border-2 border-pink-600 text-pink-600 hover:bg-pink-600 hover:text-white px-8 py-3 rounded-full font-medium transition-all"
-            >
-              Rejoindre la communauté
-            </Link>
-          </div>
+    <!-- HERO SECTION WITH CAROUSEL AS BACKGROUND -->
+    <section class="relative h-screen min-h-[600px] overflow-hidden">
+      <!-- Carousel Background -->
+      <div class="absolute inset-0" v-if="featuredProducts.length > 0">
+        <div
+          v-for="(product, index) in featuredProducts"
+          :key="product.id"
+          class="absolute inset-0 transition-opacity duration-1000 ease-in-out"
+          :class="{'opacity-100': currentSlide === index, 'opacity-0': currentSlide !== index}"
+        >
+          <img
+            :src="product.image_url || 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80'"
+            :alt="product.name"
+            class="w-full h-full object-cover"
+          />
+          <!-- Gradient overlay for better text readability -->
+          <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
         </div>
+      </div>
 
-        <!-- CAROUSEL SECTION -->
-        <div class="flex-1 w-full max-w-2xl relative">
-          <div class="relative overflow-hidden rounded-2xl shadow-2xl h-96">
-            <div
-              v-for="(product, index) in featuredProducts"
-              :key="product.id"
-              class="absolute inset-0 transition-opacity duration-500 ease-in-out"
-              :class="{'opacity-100 z-10': currentSlide === index, 'opacity-0 z-0': currentSlide !== index}"
-              @mouseenter="stopCarousel"
-              @mouseleave="startCarousel"
-            >
-              <div class="relative h-full w-full">
-                <img
-                  :src="product.image_url || 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'"
-                  :alt="product.name"
-                  class="w-full h-full object-cover"
-                />
-                <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent flex flex-col justify-end p-6">
-                  <div class="flex items-center gap-2 mb-2">
-                    <Star v-if="product.is_vedette" class="w-5 h-5 text-amber-400 fill-amber-400" />
-                    <h3 class="text-xl font-bold text-white">{{ product.name }}</h3>
-                  </div>
-                  <p class="text-white/90 line-clamp-2 mb-3">{{ product.description }}</p>
-                </div>
+      <!-- Fallback background when no products -->
+      <div v-else class="absolute inset-0">
+        <img
+          src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80"
+          alt="Beauty products"
+          class="w-full h-full object-cover"
+        />
+        <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
+      </div>
+
+      <!-- Hero Content -->
+      <div class="relative z-10 h-full flex items-center">
+        <div class="max-w-7xl mx-auto px-6 w-full">
+          <div class="max-w-2xl space-y-6">
+            <h1 class="text-4xl md:text-5xl lg:text-7xl font-extrabold leading-tight text-white drop-shadow-2xl">
+              Sublimez votre <span class="text-pink-400">beauté</span> naturelle
+            </h1>
+            <p class="text-lg md:text-xl lg:text-2xl text-white/90 drop-shadow-lg">
+              Découvrez nos produits phares soigneusement sélectionnés pour révéler votre éclat unique ✨
+            </p>
+
+            <div class="flex flex-wrap gap-4 pt-4">
+              <Link
+                :href="route('products.index')"
+                class="bg-pink-600 hover:bg-pink-700 text-white px-8 py-4 rounded-full font-semibold text-lg shadow-2xl hover:shadow-pink-500/50 transition-all transform hover:scale-105"
+              >
+                Découvrir nos produits
+              </Link>
+              <Link
+                v-if="canRegister && !auth.user"
+                :href="route('register')"
+                class="border-2 border-white/80 backdrop-blur-sm bg-white/10 text-white hover:bg-white hover:text-pink-600 px-8 py-4 rounded-full font-semibold text-lg transition-all transform hover:scale-105"
+              >
+                Rejoindre la communauté
+              </Link>
+            </div>
+
+            <!-- Product Info Badge (current slide) -->
+            <div v-if="featuredProducts.length > 0" class="inline-flex items-center gap-3 bg-white/20 backdrop-blur-md rounded-full px-6 py-3 mt-8">
+              <Star v-if="featuredProducts[currentSlide]?.is_vedette" class="w-5 h-5 text-amber-400 fill-amber-400" />
+              <div>
+                <p class="text-white font-semibold text-lg">{{ featuredProducts[currentSlide]?.name }}</p>
+                <p class="text-white/80 text-sm">{{ featuredProducts[currentSlide]?.price }} €</p>
               </div>
             </div>
-          </div>
-
-          <!-- Carousel controls -->
-          <button
-            @click="prevSlide"
-            class="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-pink-600 p-2 rounded-full shadow-md z-20 transition"
-            aria-label="Previous slide"
-          >
-            <ChevronLeft class="w-6 h-6" />
-          </button>
-          <button
-            @click="nextSlide"
-            class="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-pink-600 p-2 rounded-full shadow-md z-20 transition"
-            aria-label="Next slide"
-          >
-            <ChevronRight class="w-6 h-6" />
-          </button>
-
-          <!-- Indicators -->
-          <div class="flex justify-center gap-2 mt-4">
-            <button
-              v-for="(_, index) in featuredProducts"
-              :key="index"
-              @click="currentSlide = index"
-              class="w-3 h-3 rounded-full transition"
-              :class="{'bg-pink-600 w-6': currentSlide === index, 'bg-gray-300': currentSlide !== index}"
-              aria-label="Go to slide"
-            />
           </div>
         </div>
       </div>
 
-      <!-- Decorative elements -->
-      <div class="absolute -bottom-20 -right-20 w-64 h-64 bg-pink-200 rounded-full opacity-20 dark:opacity-10 blur-3xl"></div>
-      <div class="absolute -top-20 -left-20 w-64 h-64 bg-indigo-200 rounded-full opacity-20 dark:opacity-10 blur-3xl"></div>
+      <!-- Carousel Controls -->
+      <button
+        v-if="featuredProducts.length > 1"
+        @click="prevSlide"
+        @mouseenter="stopCarousel"
+        @mouseleave="startCarousel"
+        class="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white p-3 md:p-4 rounded-full shadow-2xl z-20 transition-all transform hover:scale-110"
+        aria-label="Previous slide"
+      >
+        <ChevronLeft class="w-6 h-6 md:w-8 md:h-8" />
+      </button>
+      <button
+        v-if="featuredProducts.length > 1"
+        @click="nextSlide"
+        @mouseenter="stopCarousel"
+        @mouseleave="startCarousel"
+        class="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white p-3 md:p-4 rounded-full shadow-2xl z-20 transition-all transform hover:scale-110"
+        aria-label="Next slide"
+      >
+        <ChevronRight class="w-6 h-6 md:w-8 md:h-8" />
+      </button>
+
+      <!-- Indicators -->
+      <div v-if="featuredProducts.length > 1" class="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 z-20">
+        <button
+          v-for="(_, index) in featuredProducts"
+          :key="index"
+          @click="currentSlide = index"
+          class="h-2 rounded-full transition-all duration-300 backdrop-blur-sm"
+          :class="{
+            'bg-white w-12': currentSlide === index,
+            'bg-white/50 w-8 hover:bg-white/70': currentSlide !== index
+          }"
+          :aria-label="`Go to slide ${index + 1}`"
+        />
+      </div>
+
+      <!-- Scroll Indicator -->
+      <div class="absolute bottom-8 left-8 z-20 hidden md:block">
+        <div class="flex flex-col items-center gap-2 text-white/60">
+          <span class="text-sm font-medium tracking-wider uppercase">Scroll</span>
+          <div class="w-px h-12 bg-white/40 animate-pulse"></div>
+        </div>
+      </div>
     </section>
 
     <!-- PRODUCTS SECTION -->
@@ -182,8 +227,8 @@ onBeforeUnmount(() => {
                 {{ product.description }}
               </p>
               <div class="flex justify-between items-center">
-                <span class="text-pink-600 font-bold text-lg">{{ product.price }} FCFA</span>
-              <Link
+                <span class="text-pink-600 font-bold text-lg">{{ product.price }} €</span>
+                <Link
                   :href="route('products.show', product.id)"
                   class="text-sm text-pink-600 hover:text-pink-700 font-medium transition"
                 >
@@ -192,16 +237,16 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-
         </div>
+
         <div class="text-center mt-12">
-        <Link
-          :href="route('products.index')"
-          class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-pink-600 hover:bg-pink-700 transition"
-        >
-          Voir toute la collection
-        </Link>
-      </div>
+          <Link
+            :href="route('products.index')"
+            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-pink-600 hover:bg-pink-700 transition"
+          >
+            Voir toute la collection
+          </Link>
+        </div>
       </div>
     </section>
 
@@ -251,7 +296,7 @@ onBeforeUnmount(() => {
           <input
             type="email"
             placeholder="Votre email"
-            class="flex-grow px-4 py-3 rounded-full text-gray-900 focus:outline-none focus:ring-2 focus:ring-white"
+            class="flex-grow px-4 py-3 rounded-full text-white focus:outline-none focus:ring-2 focus:ring-white"
             required
           />
           <button
@@ -298,20 +343,30 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="max-w-7xl mx-auto pt-8 mt-8 border-t border-gray-200 dark:border-gray-800 text-center text-sm">
-        Laravel v{{ laravelVersion }} / PHP v{{ phpVersion }} • &copy; {{ new Date().getFullYear() }} Kyodai Cosmétiques. Tous droits réservés.
+        • &copy; {{ new Date().getFullYear() }} Kyodai Cosmétiques. Tous droits réservés.
       </div>
     </footer>
   </component>
 </template>
 
 <style scoped>
-/* Custom transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.5s ease;
+/* Smooth transitions for carousel */
+.transition-opacity {
+  transition-property: opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+
+/* Animation for scroll indicator */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 </style>

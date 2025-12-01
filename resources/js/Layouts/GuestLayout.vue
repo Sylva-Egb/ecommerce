@@ -111,16 +111,16 @@
                             </div>
                         </transition>
                     </div>
-                    <img src="https://i.pravatar.cc/30" class="w-8 h-8 rounded-full" alt="Profile" />
+                    <img src="https://i.pravatar.cc/30" class="w-8 h-8 rounded-full hidden" alt="Profile" />
                 </div>
             </div>
 
             <!-- Mobile Menu -->
             <div v-if="isMobileMenuOpen" class="md:hidden bg-white px-6 pb-4">
                 <nav class="space-y-2 text-gray-700 text-sm">
-                    <Link :href="route('products.index')" class="block">Nos produits</Link>
-                    <Link :href="route('products.index')" class="block">Nouveautés</Link>
-                    <Link :href="route('products.index')" class="block">Meilleures ventes</Link>
+                    <Link :href="route('products.index')" class="hover:text-pink-600">Nos produits</Link>
+                    <Link :href="route('products.index')" class="hover:text-pink-600 hidden">Nouveautés</Link>
+                    <Link :href="route('products.index')" class="hover:text-pink-600 hidden">Meilleures ventes</Link>
                     <!-- Vous pouvez ajouter des filtres spécifiques si nécessaire -->
                 </nav>
             </div>

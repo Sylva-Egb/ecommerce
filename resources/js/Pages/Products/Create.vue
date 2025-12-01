@@ -103,7 +103,7 @@ function submit() {
 
         <!-- Prix -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Prix (FCFA)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Prix (€)</label>
           <input
             v-model="form.price"
             type="number"

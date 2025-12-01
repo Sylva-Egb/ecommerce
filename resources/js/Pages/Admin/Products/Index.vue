@@ -167,7 +167,7 @@ function destroy(id) {
               </svg>
             </div>
             <h3 class="text-lg font-medium text-gray-700 mb-1">Aucun produit disponible</h3>
-            <p class="text-gray-500">a</p>
+            <p class="text-gray-500">Cliquez sur le bouton "+" pour ajouter un produit.</p>
           </div>
         </div>
       </div>
